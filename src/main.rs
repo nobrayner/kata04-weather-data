@@ -2,19 +2,6 @@ use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
-#[derive(Debug)]
-struct DayAndTemp {
-    day: u8,
-    min_temp: f32,
-    max_temp: f32,
-}
-
-#[derive(Debug)]
-struct DayAndSpread {
-    day: u8,
-    spread: f32,
-}
-
 fn main() {
     let mut args = env::args();
 
@@ -22,60 +9,44 @@ fn main() {
         let file = File::open(filepath).expect("Unable to read that file!");
         let reader = BufReader::new(file);
 
-        let all_days = get_weather_parsed_data(
-            reader
-                .lines()
+        let mut lines_iter = reader.lines().enumerate().skip(2).peekable();
+
+        let mut day_with_lowest_spread: Option<(u8, f32)> = None;
+
+        while let Some((_, line)) = lines_iter.next() {
+            if let None = lines_iter.peek() {
+                break;
+            }
+
+            let data: Vec<_> = (line.unwrap())
+                .split_ascii_whitespace()
                 .enumerate()
-                // We don't need the first two lines of metadata
-                .skip(2)
-                .map(|(_, line)| line.unwrap())
-                .collect(),
-        );
+                .take(3)
+                .map(|(_, item)| item.to_owned())
+                .collect();
 
-        let all_days: Vec<_> = all_days
-            .iter()
-            .map(|i| DayAndSpread {
-                day: i.day,
-                spread: (i.max_temp - i.min_temp),
-            })
-            .collect();
+            let day_and_spread = (
+                data[0].parse::<u8>().unwrap(),
+                (data[1].trim_end_matches("*").parse::<f32>().unwrap()
+                    - data[2].trim_end_matches("*").parse::<f32>().unwrap())
+                .abs(),
+            );
 
-        // Don't bother handling edge cases as we have guaranteed data
-        let mut day_with_lowest_spread = &all_days[0];
-
-        for day in &all_days {
-            if day.spread < day_with_lowest_spread.spread {
-                day_with_lowest_spread = day;
+            if let Some((_, spread)) = day_with_lowest_spread {
+                if day_and_spread.1 < spread {
+                    day_with_lowest_spread = Some(day_and_spread);
+                }
+            } else {
+                day_with_lowest_spread = Some(day_and_spread);
             }
         }
 
-        println!(
-            "Day with lowest spread:\nDay: {}\nSpread: {}",
-            day_with_lowest_spread.day, day_with_lowest_spread.spread
-        );
+        if let Some((day, spread)) = day_with_lowest_spread {
+            println!("Day with lowest spread:\nDay: {}\nSpread: {}", day, spread);
+        } else {
+            println!("No days to compare");
+        }
     } else {
         println!("Please provide a filepath");
     }
-}
-
-fn get_weather_parsed_data(lines: Vec<String>) -> Vec<DayAndTemp> {
-    let mut all_days = vec![];
-
-    // Reverse so as to drop the last line - which is averages that we don't want
-    for line in lines.iter().rev().skip(1) {
-        let sanitized_data_line: Vec<_> =
-            line.split_ascii_whitespace().enumerate().take(3).collect();
-        let sanitized_data: Vec<_> = sanitized_data_line
-            .iter()
-            .map(|(_, item)| item.trim_end_matches("*").to_owned())
-            .collect();
-
-        all_days.push(DayAndTemp {
-            day: sanitized_data[0].parse::<u8>().unwrap(),
-            min_temp: sanitized_data[2].parse::<f32>().unwrap(),
-            max_temp: sanitized_data[1].parse::<f32>().unwrap(),
-        })
-    }
-
-    all_days
 }
